@@ -1,0 +1,29 @@
+{
+  "name": "oneshop-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:all": "node scripts/dev-all.mjs",
+    "dev:web": "npm --workspace @oneshop/web run dev",
+    "dev:api": "npm --workspace @oneshop/api run dev",
+    "dev:worker": "npm --workspace @oneshop/worker run dev",
+    "build": "npm run typecheck && npm run build:web",
+    "build:web": "npm --workspace @oneshop/web run build",
+    "typecheck": "npm run typecheck:shared && npm run typecheck:api && npm run typecheck:worker && npm run typecheck:web",
+    "typecheck:shared": "npm --workspace @oneshop/shared run typecheck",
+    "typecheck:api": "npm --workspace @oneshop/api run typecheck",
+    "typecheck:worker": "npm --workspace @oneshop/worker run typecheck",
+    "typecheck:web": "npm --workspace @oneshop/web run typecheck",
+    "lint": "npm run lint:web",
+    "lint:web": "npm --workspace @oneshop/web run lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}
