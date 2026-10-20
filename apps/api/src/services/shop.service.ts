@@ -16,7 +16,7 @@ function normalizeSlug(input: string) {
 }
 
 function buildShopUrl(slug: string) {
-  return `${process.env.PLATFORM_URL ?? "http://localhost"}/shops/${slug}`;
+  return `${process.env.PLATFORM_URL ?? "http://localhost:8080"}/shops/${slug}`;
 }
 
 export async function listShops(ownerUserId: string) {
