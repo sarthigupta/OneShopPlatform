@@ -27,3 +27,7 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+Plan.md
+PROJECT_FILE_GUIDE.md
+PROJECT_STATUS.md
+NEXT_IMPLEMENTATION_PLAN.md
