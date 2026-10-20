@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "dev:all": "node scripts/dev-all.mjs",
+    "start:local": "node scripts/start-local.mjs",
     "dev:web": "npm --workspace @oneshop/web run dev",
     "dev:api": "npm --workspace @oneshop/api run dev",
     "dev:worker": "npm --workspace @oneshop/worker run dev",

@@ -28,12 +28,15 @@ The current plan uses `/{shops}/{slug}` on one host, but the database only makes
 
 ## Step 3 — Build the public shop application
 
+**Status:** Implemented in the local codebase; full cluster publishing remains to be verified.
+
 **Work**
 
 - Add a minimal standard shop app that reads its shop name and slug from configuration.
 - Provide a `/health` endpoint for Kubernetes probes.
 - Add a Dockerfile and local run instructions.
 - Add a public page that displays the shop name and a simple ready state.
+- Persist owner-editable tagline, description, announcement, accent color, and product cards; publish them through the worker into the shop workload.
 
 **Done when** the same image runs locally with different shop configuration and returns a healthy response.
 

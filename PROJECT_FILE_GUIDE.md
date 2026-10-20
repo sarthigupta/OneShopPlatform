@@ -32,7 +32,7 @@ flowchart LR
 
 ### Update and delete
 
-An update changes the database record to `UPDATING`; the worker applies the changed shop settings and waits for the updated Deployment to be available before marking it ready. A delete request changes status to `DELETING`; the worker deletes that shop's Ingress, Service, and Deployment, then removes the database row.
+An update changes the database record to `UPDATING`; the worker applies the changed shop settings and waits for the updated Deployment to be available before marking it ready. A delete request changes status to `DELETING`; the worker deletes that shop's Ingress, Service, and Deployment, then removes the database row. If an operation fails, the worker sets `ERROR` and saves the failed operation in `retryStatus`. The authenticated `POST /api/shops/:id/retry` endpoint restores that operation's status, and the dashboard's Retry button calls it. This lets a failed delete retry cleanup, for example, instead of starting provisioning again.
 
 ## Kubernetes and infrastructure YAML files
 
@@ -69,7 +69,8 @@ The per-shop Deployment, Service, and Ingress are not checked-in YAML files. The
 | Path | Purpose |
 | --- | --- |
 | `apps/web/src/app/page.tsx` | Main landing page. |
-| `apps/web/src/app/shops/page.tsx` | Shop dashboard UI: list/create/update/delete shops and display lifecycle status. |
+| `apps/web/src/app/shops/page.tsx` | Shop dashboard UI: list/create/update/delete shops, display lifecycle status, retry errors, and link to storefront editing. |
+| `apps/web/src/app/shops/[id]/storefront/page.tsx` | Owner editor for shop tagline, description, announcement, accent color, and product cards. Saves content through the authenticated API and watches publish status. |
 | `apps/web/src/app/layout.tsx` | Shared Next.js document layout. |
 | `apps/web/src/app/globals.css` | Global styles. |
 | `apps/web/next.config.ts` | Next.js configuration. |
@@ -83,7 +84,7 @@ The per-shop Deployment, Service, and Ingress are not checked-in YAML files. The
 | --- | --- |
 | `apps/api/src/index.ts` | Express app entry point. Adds JSON parsing, mounts auth and shop routers, health/root endpoints, and the final error handler. |
 | `apps/api/src/routes/auth.ts` | Auth URL/method definitions and authentication middleware wiring. |
-| `apps/api/src/routes/shops.ts` | Shop URL/method definitions, protected by authentication. |
+| `apps/api/src/routes/shops.ts` | Shop URL/method definitions, protected by authentication, including retry for failed shop operations. |
 | `apps/api/src/controllers/auth.controller.ts` | Handles auth requests and HTTP responses. |
 | `apps/api/src/controllers/shops.controller.ts` | Validates shop request input, calls shop services, and shapes HTTP responses. |
 | `apps/api/src/services/auth.service.ts` | Authentication business logic such as registration, sign-in, and password verification. |
@@ -93,7 +94,7 @@ The per-shop Deployment, Service, and Ingress are not checked-in YAML files. The
 | `apps/api/src/lib/app-error.ts` | Application error type carrying an HTTP status. |
 | `apps/api/src/lib/prisma.ts` | Prisma client setup and PostgreSQL adapter. |
 | `apps/api/src/types.ts` | Shared Express request type extensions. |
-| `apps/api/prisma/schema.prisma` | Database model definitions: User, Shop, ShopStatus, uniqueness and indexes. |
+| `apps/api/prisma/schema.prisma` | Database model definitions: User, Shop, ShopStatus, persisted JSON storefront content, uniqueness and indexes. |
 | `apps/api/prisma/migrations/` | SQL history used to evolve the database schema. |
 | `apps/api/prisma7.config.ts` | Prisma CLI datasource configuration from environment variables. |
 | `apps/api/package.json` | API dependencies and development/Prisma commands. |
@@ -105,7 +106,7 @@ Typical API request flow is **route → controller → service → Prisma/databa
 
 | Path | Purpose |
 | --- | --- |
-| `apps/worker/src/index.ts` | Polls PostgreSQL for `PROVISIONING`, `UPDATING`, and `DELETING` shops. Creates or updates their Kubernetes Deployment, Service, and Ingress; checks rollout readiness; updates or deletes database records. |
+| `apps/worker/src/index.ts` | Polls PostgreSQL for `PROVISIONING`, `UPDATING`, and `DELETING` shops. Creates or updates their Kubernetes Deployment, Service, and Ingress; checks rollout readiness; updates or deletes database records. Failed operations are marked `ERROR` while their operation type is retained so the owner can retry the same operation. |
 | `apps/worker/package.json` | Worker dependencies (`@kubernetes/client-node`, `pg`) and development/typecheck scripts. |
 | `apps/worker/tsconfig.json` | Worker TypeScript settings. |
 | `apps/worker/.env` | Local worker settings when present. It must point at the same database as the API and specify the cluster namespace/image/host as needed. Keep it private. |
@@ -116,7 +117,7 @@ The worker is currently a host process started by npm, not a Kubernetes Deployme
 
 | Path | Purpose |
 | --- | --- |
-| `apps/shop/server.js` | Small HTTP shop server. Renders a sample storefront using `SHOP_NAME` and `SHOP_SLUG`; exposes `/health` for Kubernetes probes. |
+| `apps/shop/server.js` | HTTP shop server. Renders the shop name and persisted `SHOP_CONTENT_JSON` fields/products; exposes `/health` for Kubernetes probes. |
 | `apps/shop/Dockerfile` | Builds the minimal Node 22 Alpine image, runs it as a non-root user, and exposes port 3000. |
 
 ### Local cluster guide and helper script

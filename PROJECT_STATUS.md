@@ -1,10 +1,9 @@
 # OneShopPlatform Project Status
 
-**Reviewed:** 18 October 2026  
-**Status:** Early MVP foundation; not production ready  
-**Estimated completion:** about **30% of the MVP described in `Plan.md`**
+**Reviewed:** 20 October 2026  
+**Status:** Local MVP implementation in progress; not production ready
 
-This estimate measures implemented MVP scope, not elapsed effort. It is a code review estimate only: the application was not run and no build, typecheck, deployment, or end-to-end verification was performed for this report.
+This is a code status snapshot, not a runtime verification report. The current shop content publishing flow has not been exercised against a live kind cluster here, and automated tests are not present.
 
 ## What the project is
 
@@ -18,7 +17,7 @@ The repository uses a JavaScript/TypeScript workspace with three applications:
 - `infra`: initial kind cluster, namespace, and worker RBAC files.
 - `Plan.md`: intended product scope, phased implementation plan, and MVP definition of done.
 
-The intended product is deliberately narrower than a full ecommerce system. Products, inventory, payments, themes, and analytics are deferred until shop lifecycle management works reliably.
+The intended product is deliberately narrower than a full ecommerce system. Basic owner-managed storefront copy, styling, and product listings are in scope; inventory, payments, themes, and analytics remain deferred.
 
 ## What is implemented
 
@@ -33,7 +32,7 @@ The intended product is deliberately narrower than a full ecommerce system. Prod
 
 - Registration and login validate input with Zod and hash passwords with Argon2id.
 - The API issues a signed, HTTP-only session cookie and provides logout and current-user endpoints.
-- Shop endpoints support listing, creating, fetching, editing, deletion initiation, and status lookup.
+- Shop endpoints support listing, creating, fetching, editing, deletion initiation, status lookup, retrying failed operations, and saving owner-managed storefront content.
 - Shop routes require authentication and scope shop reads and mutations to the signed-in owner.
 - Creation normalizes a slug, checks for a per-owner collision, stores a URL, and starts the record in `PROVISIONING`.
 
@@ -42,6 +41,7 @@ The intended product is deliberately narrower than a full ecommerce system. Prod
 - The home route has sign-in and account creation forms.
 - The shops route loads the authenticated user's shops and supports create, edit, delete, and sign-out actions.
 - Basic responsive styling, loading, empty, and error states are present.
+- A storefront editor saves the shop introduction, announcement, accent color, and product cards through an authenticated owner-scoped API endpoint.
 - Next.js rewrites `/api/*` requests to the API service.
 
 ### Provisioning prototype
@@ -49,6 +49,7 @@ The intended product is deliberately narrower than a full ecommerce system. Prod
 - The worker polls PostgreSQL for `PROVISIONING`, `UPDATING`, and `DELETING` records.
 - It creates or replaces a Deployment, Service, and Ingress using deterministic names and shop labels.
 - The workload includes resource requests/limits, health probes, and a restrictive container security context.
+- Shop content is read from PostgreSQL and supplied to the container through its Deployment environment.
 - It marks an available Deployment `READY`, retries work by polling, marks caught errors `ERROR`, and removes Kubernetes resources before deleting the shop row.
 
 ## Completion by phase
@@ -57,24 +58,24 @@ The intended product is deliberately narrower than a full ecommerce system. Prod
 | --- | --- | --- |
 | 0. Decisions and foundation | Partially complete | Architecture, workspace, database configuration, kind skeleton, and RBAC exist. There is no shared package/config, complete local cluster setup, ingress-controller install, full environment-variable documentation, or reproducible setup guide. |
 | 1. Shop domain and database | Partially complete | User/shop schema, migrations, and owner-scoped CRUD routes exist. Automated tests are absent; validation and failure/edge cases need hardening. |
-| 2. Dashboard and public shop | Partially complete | Auth forms and a shop management screen exist. There is no public shop route, and the dashboard does not poll for lifecycle changes or show the shop URL. |
-| 3. Standard shop container | Not implemented | No standard shop application, Dockerfile, health endpoint, image build, or registry workflow is present. |
-| 4. Kubernetes provisioning | Prototype present | Worker reconciliation, Kubernetes resource generation, and RBAC exist. There is no durable queue, readiness wait loop, bounded retry policy, error detail, deployment packaging, or observed cluster validation. |
-| 5. End-to-end one-click flow | Not complete | Shop rows enter a provisioning state, but there is no demonstrated working image and cluster path, public shop experience, status refresh, or automated end-to-end coverage. |
+| 2. Dashboard and public shop | Partially complete | The dashboard refreshes shop lifecycle status, offers retry, and links to a public shop route and storefront editor. End-to-end publication has not been confirmed in this environment. |
+| 3. Standard shop container | Implemented locally | A health-checked shop server renders persisted shop content and products. The image is built and loaded into kind by the local startup script. |
+| 4. Kubernetes provisioning | Prototype present | Worker reconciliation, readiness checks, retry operation tracking, and RBAC exist. There is no durable queue, bounded retry policy, in-cluster worker deployment, or confirmed live cluster validation. |
+| 5. End-to-end one-click flow | Not verified | The code supports provisioning and editing flows, but creating a shop, publishing changes, and cleanup have not been confirmed against a live cluster here. Automated coverage is absent. |
 | 6. Production deployment | Not implemented | No platform container manifests/charts, CI/CD, TLS/DNS, managed database plan, secret management, monitoring, backup, or recovery procedure. |
 | 7. Hardening and expansion | Not implemented | No rate limiting, audit trail, quotas, concurrency/outage coverage, or operational runbooks. |
 
-### Why the estimate is about 30%
+### Current completion assessment
 
-The user-facing account and shop CRUD foundation is meaningfully underway, and the worker has an initial provisioning implementation. However, the defining product outcome—an authenticated user creates a shop that becomes reachable at its public URL—depends on the missing standard shop image and public route, an operational local Kubernetes setup, and integration verification. Most reliability, test, and production work remains.
+The code now includes authentication, owner-scoped shop management, a public storefront, editable persisted content, and a Kubernetes reconciliation path. The defining outcome—an authenticated owner publishes a shop and sees the change at its URL—still needs a successful local cluster run and repeated failure/retry verification. Automated coverage, production deployment, and operations work remain.
 
 ## Important gaps and risks to resolve
 
-1. **The public shop does not exist yet.** The web app only has `/` and `/shops`; `/shops/:slug` is not implemented. The worker's Ingress routes to a workload that the repository does not build.
-2. **Provisioning status handling needs work.** The worker checks `availableReplicas` immediately after applying resources. If the pod is not ready yet, its next poll reconciles the shop, but it has no bounded readiness wait or clear failure reason. A record in `ERROR` is not selected for retry and the dashboard has no retry action.
+1. **The public shop is still a basic storefront.** Owners can edit copy, accent color, and product cards, but there are no product images, inventory, cart, or checkout.
+2. **Provisioning operations need stronger recovery.** The worker marks failures and lets the owner retry the last operation, but has no attempt limit, backoff, or stored diagnostic message beyond worker logs.
 3. **Worker polling can race.** The query selects up to ten jobs without claiming or locking them. Multiple worker instances could process the same shop concurrently. There is no durable job record, attempt count, backoff, or lease.
 4. **Shop edits can disrupt a ready shop.** Any PATCH sets status to `UPDATING`, even when fields are unchanged. Slug changes alter the Ingress path, but old routes are not explicitly removed or redirected.
-5. **Deletion is asynchronous but not shown as such in the UI.** The API marks a shop `DELETING` and returns `202`; the UI removes it from the list immediately. There is no confirmation of completed cleanup or visible failure state if cleanup fails.
+5. **Deletion is asynchronous.** The dashboard keeps the shop visible while deletion is pending and exposes retry if cleanup fails, but completion and partial-failure behavior still need live-cluster verification.
 6. **Input and data validation are inconsistent.** Auth uses Zod, while shop routes use casts and ad hoc checks. Shop name length, slug bounds/format, and database errors need consistent handling. A slug is unique only per owner, while the Ingress URL path is shared on one host; two owners may collide at the same public path.
 7. **Local environment configuration needs a reproducible pass.** The example environment file documents `DATABASE_URL`, while Prisma and the worker use `DIRECT_URL`. The kind file maps ports but does not install an ingress controller. Setup and image-loading steps are not documented as runnable commands.
 8. **No automated tests are present.** Root scripts do not include tests, and the planned authorization, CRUD, worker reconciliation, retry, and cleanup cases are uncovered.
@@ -91,12 +92,11 @@ Work in this order so each step makes the product path more concrete:
 - Define how the local kind cluster gets its ingress controller, namespace, and images; document commands and prerequisites.
 - Add readiness checks for PostgreSQL, API, and worker startup behavior.
 
-### 2. Finish the non-Kubernetes product flow
+### 2. Verify the storefront and lifecycle flow
 
-- Build the public shop page and a minimal standard shop application with `/health`.
-- Display each shop's URL and lifecycle status in the dashboard.
-- Refresh status while provisioning/updating/deleting, and add a clear retry flow for failed provisioning.
-- Keep deletion visible until cleanup succeeds or reports an actionable error.
+- Start the full local stack and verify create → ready → edit content → published update → delete.
+- Verify the editor persists changes across browser reloads and that the public page escapes user content safely.
+- Exercise worker restart and a temporary Kubernetes failure; confirm the owner can retry the saved operation.
 - Define a globally unique public URL strategy. With one shared host and path-based routes, per-owner slug uniqueness alone is not enough.
 
 ### 3. Make shop domain behavior safe and tested
@@ -142,4 +142,4 @@ Work in this order so each step makes the product path more concrete:
 
 ## Overall assessment
 
-This is a credible early implementation, not just a blank scaffold: authentication, owner-scoped shop endpoints, a basic dashboard, migrations, and a Kubernetes reconciliation loop are present. The project should focus next on the missing standard shop/public route and a reproducible local end-to-end workflow, while adding tests and strengthening worker job handling. Production deployment and operational hardening should follow after that complete local workflow is reliable.
+This is a working local implementation rather than a blank scaffold: authentication, owner-scoped shop endpoints, an editable storefront, migrations, and a Kubernetes reconciliation loop are present. The next priority is to verify the full publish flow on the local cluster, then add automated coverage and strengthen worker job handling. Production deployment and operational hardening should follow after the local workflow is reliable.

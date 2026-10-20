@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 type ShopStatus = "PROVISIONING" | "READY" | "UPDATING" | "DELETING" | "ERROR";
 type Shop = { id: string; name: string; slug: string; url: string; status: ShopStatus };
@@ -18,6 +19,7 @@ export default function ShopsPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const loadShops = useCallback(async () => {
@@ -28,7 +30,8 @@ export default function ShopsPage() {
         return;
       }
       if (!response.ok) {
-        setError("Could not load shops");
+        const body = (await response.json().catch(() => null)) as ErrorResponse | null;
+        setError(body?.error ? `Could not load shops: ${body.error}` : `Could not load shops (HTTP ${response.status})`);
         return;
       }
 
@@ -137,6 +140,30 @@ export default function ShopsPage() {
     }
   }
 
+  async function retryShop(shopId: string) {
+    setError("");
+    setRetryingId(shopId);
+
+    try {
+      const response = await fetch(`/api/shops/${shopId}/retry`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const body = (await response.json()) as ErrorResponse;
+        setError(body.error ?? "Could not retry shop");
+        return;
+      }
+
+      const body = (await response.json()) as ShopResponse;
+      setShops((current) => current.map((shop) => (shop.id === shopId ? body.shop : shop)));
+    } catch {
+      setError("Could not retry shop. Check your connection and try again.");
+    } finally {
+      setRetryingId(null);
+    }
+  }
+
   return (
     <main>
       <header className="page-header">
@@ -187,6 +214,21 @@ export default function ShopsPage() {
                     <span className={`status status-${shop.status.toLowerCase()}`} aria-live="polite">
                       {shop.status === "PROVISIONING" ? "Provisioning…" : shop.status.toLowerCase()}
                     </span>
+                    {shop.status === "ERROR" && (
+                      <>
+                        <span className="muted">Shop operation failed. Check worker logs, then retry.</span>
+                        <button
+                          className="link-button"
+                          onClick={() => void retryShop(shop.id)}
+                          disabled={retryingId === shop.id}
+                        >
+                          {retryingId === shop.id ? "Retrying..." : "Retry"}
+                        </button>
+                      </>
+                    )}
+                    {shop.status === "READY" && (
+                      <Link className="link-button" href={`/shops/${shop.id}/storefront`} prefetch>Manage storefront</Link>
+                    )}
                     <button className="link-button" onClick={() => setEditingId(shop.id)} disabled={isActive}>
                       Edit
                     </button>

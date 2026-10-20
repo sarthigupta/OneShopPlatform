@@ -6,7 +6,7 @@ const { Pool } = pg;
 const namespace = process.env.KUBERNETES_NAMESPACE ?? "oneshop";
 const image = process.env.SHOP_IMAGE ?? "oneshop/shop:local";
 const platformHost = process.env.PLATFORM_HOST ?? "localhost";
-const pollIntervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
+const pollIntervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 1000);
 const databaseUrl = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("Set DIRECT_URL or DATABASE_URL before starting the worker");
 
@@ -22,6 +22,7 @@ type Shop = {
   id: string;
   name: string;
   slug: string;
+  content: Record<string, unknown>;
   status: "PROVISIONING" | "UPDATING" | "DELETING";
 };
 
@@ -66,6 +67,7 @@ function deployment(shop: Shop) {
               env: [
                 { name: "SHOP_NAME", value: shop.name },
                 { name: "SHOP_SLUG", value: shop.slug },
+                { name: "SHOP_CONTENT_JSON", value: JSON.stringify(shop.content ?? {}) },
               ],
               resources: {
                 requests: { cpu: "50m", memory: "64Mi" },
@@ -73,8 +75,8 @@ function deployment(shop: Shop) {
               },
               readinessProbe: {
                 httpGet: { path: "/health", port: 3000 },
-                initialDelaySeconds: 3,
-                periodSeconds: 5,
+                initialDelaySeconds: 0,
+                periodSeconds: 2,
               },
               livenessProbe: {
                 httpGet: { path: "/health", port: 3000 },
@@ -246,7 +248,7 @@ async function poll() {
 
   try {
     const result = await pool.query<Shop>(
-      'SELECT "id", "name", "slug", "status" FROM "Shop" WHERE "status" IN (\'PROVISIONING\', \'UPDATING\', \'DELETING\') ORDER BY "createdAt" ASC LIMIT 10',
+      'SELECT "id", "name", "slug", "content", "status" FROM "Shop" WHERE "status" IN (\'PROVISIONING\', \'UPDATING\', \'DELETING\') ORDER BY "createdAt" ASC LIMIT 10',
     );
 
     for (const shop of result.rows) {
@@ -255,8 +257,8 @@ async function poll() {
       } catch (error) {
         console.error(`Failed to reconcile shop ${shop.id}`, error);
         await pool.query(
-          'UPDATE "Shop" SET "status" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $2',
-          ["ERROR", shop.id],
+          'UPDATE "Shop" SET "status" = $1, "retryStatus" = $2, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $3',
+          ["ERROR", shop.status, shop.id],
         );
       }
     }

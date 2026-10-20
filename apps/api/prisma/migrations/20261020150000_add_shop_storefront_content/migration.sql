@@ -1,0 +1,2 @@
+ALTER TABLE "Shop"
+ADD COLUMN "content" JSONB NOT NULL DEFAULT '{}'::jsonb;

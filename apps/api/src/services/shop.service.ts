@@ -1,9 +1,23 @@
 import { prisma } from "../lib/prisma.js";
 import { AppError } from "../lib/app-error.js";
+import type { Prisma } from "../../generated/prisma/client.js";
 
 export type ShopInput = {
   name?: string;
   slug?: string;
+};
+
+export type StorefrontContentInput = {
+  tagline: string;
+  description: string;
+  announcement: string;
+  accentColor: string;
+  products: Array<{
+    id: string;
+    name: string;
+    description: string;
+    priceCents: number;
+  }>;
 };
 
 function normalizeSlug(input: string) {
@@ -91,6 +105,7 @@ export async function updateShop(ownerUserId: string, shopId: string, input: Sho
         slug,
         url: buildShopUrl(slug),
         status: "UPDATING",
+        retryStatus: null,
       },
     });
   } catch (error) {
@@ -101,13 +116,46 @@ export async function updateShop(ownerUserId: string, shopId: string, input: Sho
   }
 }
 
+export async function updateShopContent(
+  ownerUserId: string,
+  shopId: string,
+  content: StorefrontContentInput,
+) {
+  const existingShop = await getShop(ownerUserId, shopId);
+  if (existingShop.status !== "READY") {
+    throw new AppError("The storefront can only be edited while the shop is ready", 409);
+  }
+
+  return prisma.shop.update({
+    where: { id: shopId },
+    data: {
+      content: content as Prisma.InputJsonValue,
+      status: "UPDATING",
+      retryStatus: null,
+    },
+  });
+}
+
 export async function requestShopDeletion(ownerUserId: string, shopId: string) {
   const existingShop = await getShop(ownerUserId, shopId);
   await prisma.shop.update({
     where: { id: shopId },
-    data: { status: "DELETING" },
+    data: { status: "DELETING", retryStatus: null },
   });
-  return { ...existingShop, status: "DELETING" as const };
+  return { ...existingShop, status: "DELETING" as const, retryStatus: null };
+}
+
+export async function retryShop(ownerUserId: string, shopId: string) {
+  const existingShop = await getShop(ownerUserId, shopId);
+  if (existingShop.status !== "ERROR") {
+    throw new AppError("Only shops with an error can be retried", 409);
+  }
+
+  const status = existingShop.retryStatus ?? "PROVISIONING";
+  return prisma.shop.update({
+    where: { id: shopId },
+    data: { status, retryStatus: null },
+  });
 }
 
 export async function getShopStatus(ownerUserId: string, shopId: string) {
